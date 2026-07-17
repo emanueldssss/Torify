@@ -162,6 +162,23 @@ Ou direto com o compilador C#:
 
 ---
 
+## Linux
+
+Tem uma versão para Linux também! Python puro, mesmo conceito:
+
+```
+https://github.com/emanueldssss/Torify-Linux
+```
+
+```bash
+git clone https://github.com/emanueldssss/Torify-Linux.git
+cd Torify-Linux
+chmod +x torify.py
+./torify.py
+```
+
+---
+
 ## Sobre
 
 Ferramenta gratuita e open-source. Usa o [Tor Expert Bundle](https://www.torproject.org/) da comunidade Tor Project e o [proxychains-windows](https://github.com/shunf4/proxychains-windows) mantido por shunf4.
