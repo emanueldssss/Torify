@@ -228,7 +228,7 @@ namespace Torify
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("  [1] Rodar TorProxy");
             Console.ResetColor();
-            Console.WriteLine("      Inicia Tor, rotaciona IP, abre aplicativo\n");
+            Console.WriteLine("      Inicia Tor e rotaciona IP\n");
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("  [2] Conferir IP");
             Console.ResetColor();
@@ -401,7 +401,6 @@ namespace Torify
                 Console.ResetColor();
             }
 
-            LaunchTargetApp();
             WaitAndBack();
         }
 
