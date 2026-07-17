@@ -63,16 +63,48 @@ namespace Torify
             AppsFile = Path.Combine(BaseDir, "apps.txt");
         }
 
+        static void CheckDependencies()
+        {
+            bool missing = false;
+            if (!Directory.Exists(TorDir) || !File.Exists(TorExe))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] Tor nao encontrado em: {0}", TorDir);
+                missing = true;
+            }
+            if (!Directory.Exists(PcDir) || PcExe == null || !File.Exists(PcExe))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] Proxychains nao encontrado em: {0}", PcDir);
+                missing = true;
+            }
+            if (missing)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n  [!] Execute setup.ps1 ou extraia o zip completo do release.");
+                Console.WriteLine("      O torify.exe precisa estar na pasta ao lado de tor/ e proxychains/.");
+                Console.ResetColor();
+            }
+            Console.ResetColor();
+        }
+
         static string FindPcExe()
         {
+            if (!Directory.Exists(PcDir))
+                return null;
+
             // Try 64-bit first, fall back to 32-bit
             string x64 = Path.Combine(PcDir, "proxychains_win32_x64.exe");
             if (File.Exists(x64)) return x64;
             string x86 = Path.Combine(PcDir, "proxychains_win32.exe");
             if (File.Exists(x86)) return x86;
             // Accept any .exe in proxychains dir
-            var files = Directory.GetFiles(PcDir, "proxychains*.exe");
-            if (files.Length > 0) return files[0];
+            try
+            {
+                var files = Directory.GetFiles(PcDir, "proxychains*.exe");
+                if (files.Length > 0) return files[0];
+            }
+            catch { }
             return x64; // fallback, will fail gracefully later
         }
 
@@ -736,6 +768,7 @@ namespace Torify
                 Console.InputEncoding = System.Text.Encoding.UTF8;
 
                 InitPaths();
+                CheckDependencies();
                 SetAlpha(210);
 
                 string op = "";
