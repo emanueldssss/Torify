@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -63,29 +64,143 @@ namespace Torify
             AppsFile = Path.Combine(BaseDir, "apps.txt");
         }
 
+        static void RunSetup()
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("\n  ========================");
+            Console.WriteLine("    Primeira execucao");
+            Console.WriteLine("  ========================");
+            Console.ResetColor();
+            Console.WriteLine("\n  Baixando dependencias (Tor + Proxychains)...\n");
+
+            string setupDone = Path.Combine(BaseDir, ".setup-complete");
+            if (File.Exists(setupDone)) return;
+
+            using (var wc = new WebClient())
+            {
+                wc.DownloadProgressChanged += (s, e) =>
+                {
+                    Console.Write("\r  [{0}{1}] {2}%   ",
+                        new string('#', e.ProgressPercentage / 5),
+                        new string('.', 20 - e.ProgressPercentage / 5),
+                        e.ProgressPercentage);
+                };
+
+                // Download Tor
+                string torVer = "15.0.18";
+                string torUrl = "https://www.torproject.org/dist/torbrowser/" + torVer + "/tor-expert-bundle-windows-x86_64-" + torVer + ".tar.gz";
+                string torFile = Path.Combine(BaseDir, "tor-expert.tar.gz");
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  [1/3] Baixando Tor... ");
+                Console.ResetColor();
+                try { wc.DownloadFile(torUrl, torFile); }
+                catch
+                {
+                    torUrl = "https://archive.torproject.org/tor-package-archive/torbrowser/" + torVer + "/tor-expert-bundle-windows-x86_64-" + torVer + ".tar.gz";
+                    wc.DownloadFile(torUrl, torFile);
+                }
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine(" OK!");
+                Console.ResetColor();
+
+                // Extract Tor
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  [2/3] Extraindo Tor... ");
+                Console.ResetColor();
+                var tar = new Process();
+                tar.StartInfo.FileName = "tar.exe";
+                tar.StartInfo.Arguments = "-xzf \"" + torFile + "\" -C \"" + BaseDir + "\"";
+                tar.StartInfo.UseShellExecute = false;
+                tar.StartInfo.CreateNoWindow = true;
+                tar.Start();
+                tar.WaitForExit();
+
+                string extracted = null;
+                foreach (string d in Directory.GetDirectories(BaseDir, "tor-expert-bundle-windows-*"))
+                {
+                    extracted = d; break;
+                }
+                if (extracted != null)
+                {
+                    if (Directory.Exists(TorDir)) Directory.Delete(TorDir, true);
+                    Directory.Move(extracted, TorDir);
+                }
+                File.Delete(torFile);
+
+                // Create torrc
+                Directory.CreateDirectory(Path.Combine(TorDir, "Data", "Tor"));
+                string torrc = "SOCKSPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nCookieAuthentication 0\nDataDirectory " + TorDir + "\\Data\\Tor\nLog notice stdout\n";
+                File.WriteAllText(Torrc, torrc);
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine(" OK!");
+                Console.ResetColor();
+
+                // Download Proxychains
+                string pcVer = "0.6.8";
+                string pcUrl = "https://github.com/shunf4/proxychains-windows/releases/download/" + pcVer + "/proxychains_" + pcVer + "_win32_x64.zip";
+                string pcFile = Path.Combine(BaseDir, "proxychains.zip");
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  [3/3] Baixando Proxychains... ");
+                Console.ResetColor();
+                wc.DownloadFile(pcUrl, pcFile);
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine(" OK!");
+                Console.ResetColor();
+
+                // Extract Proxychains
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  Extraindo Proxychains... ");
+                Console.ResetColor();
+                if (!Directory.Exists(PcDir)) Directory.CreateDirectory(PcDir);
+                // Use PowerShell Expand-Archive to extract zip
+                var unzip = new Process();
+                unzip.StartInfo.FileName = "powershell.exe";
+                unzip.StartInfo.Arguments = "-NoProfile -Command \"Expand-Archive -Path '" + pcFile + "' -DestinationPath '" + PcDir + "' -Force\"";
+                unzip.StartInfo.UseShellExecute = false;
+                unzip.StartInfo.CreateNoWindow = true;
+                unzip.Start();
+                unzip.WaitForExit();
+                File.Delete(pcFile);
+
+                // Create proxychains.conf
+                string pcConf = "strict_chain\nproxy_dns\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n[ProxyList]\nsocks5 127.0.0.1 9050\n";
+                File.WriteAllText(PcConf, pcConf);
+
+                // Refresh PcExe
+                PcExe = FindPcExe();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine(" OK!");
+                Console.ResetColor();
+
+                // Marker
+                File.WriteAllText(setupDone, "Setup completed on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("\n  [+] Setup concluido! Iniciando menu...\n");
+            Console.ResetColor();
+            System.Threading.Thread.Sleep(1500);
+        }
+
         static void CheckDependencies()
         {
-            bool missing = false;
-            if (!Directory.Exists(TorDir) || !File.Exists(TorExe))
+            string setupDone = Path.Combine(BaseDir, ".setup-complete");
+
+            // If marker exists or both Tor and proxychains already present, skip setup
+            if (File.Exists(setupDone)) return;
+            if (Directory.Exists(TorDir) && File.Exists(TorExe) &&
+                Directory.Exists(PcDir) && PcExe != null && File.Exists(PcExe))
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("  [!] Tor nao encontrado em: {0}", TorDir);
-                missing = true;
+                // Already set up (e.g. from setup.ps1), just create marker
+                File.WriteAllText(setupDone, "Setup completed on " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                return;
             }
-            if (!Directory.Exists(PcDir) || PcExe == null || !File.Exists(PcExe))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("  [!] Proxychains nao encontrado em: {0}", PcDir);
-                missing = true;
-            }
-            if (missing)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("\n  [!] Execute setup.ps1 ou extraia o zip completo do release.");
-                Console.WriteLine("      O torify.exe precisa estar na pasta ao lado de tor/ e proxychains/.");
-                Console.ResetColor();
-            }
-            Console.ResetColor();
+
+            RunSetup();
         }
 
         static string FindPcExe()
