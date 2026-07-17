@@ -1,84 +1,157 @@
 # Torproxy-win
 
-Windows privacy tool — Tor + Proxychains automation.  
-Inicia o Tor daemon, configura proxychains e roda aplicativos atraves do proxy com rotacao automatica de IP.
+Roteie qualquer aplicativo Windows pelo Tor com um clique.
+
+Inicia o Tor daemon, configura proxychains e abre programas selecionados passando pelo proxy — com rotacao automatica de IP a cada sessao. O terminal do menu nunca fecha; cada app abre em janela separada.
 
 ---
 
-## Como funciona
-
-- **Tor daemon** — SOCKS5 em `127.0.0.1:9050`
-- **Proxychains-Windows** — hookeia Winsock e redireciona conexoes de qualquer aplicacao
-- **torify.exe** — menu em C# que coordena: inicia Tor, rotaciona IP, abre o app configurado
-
-O terminal do menu **nao fecha** — o app abre em janela separada.
-
----
-
-## Instalacao
+## Instalação
 
 ### Requisitos
-- Windows 10/11 64-bit
-- .NET Framework 4.x (ja vem instalado)
-- O aplicativo que voce quer rotear (ex: opencode, navegador, etc.)
 
-### Setup
+- Windows 10 ou 11 (64-bit)
+- .NET Framework 4.x (já vem instalado no Windows)
+
+### Passo a passo
 
 ```powershell
+# 1. Clone o repositorio
 git clone https://github.com/emanueldssss/Torproxy-win.git
 cd Torproxy-win
+
+# 2. Execute o setup (baixa Tor + proxychains + compila o menu)
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-O setup baixa Tor Expert Bundle + Proxychains-Windows, cria as configs e compila o menu.
+O setup baixa automaticamente o Tor Expert Bundle (~21 MB) e o Proxychains-Windows, cria os arquivos de configuracao (`torrc`, `proxychains.conf`) e compila o `torify.exe`. Nada manual, nada hardcoded.
+
+### Opcional: atalho no desktop
+
+```powershell
+$ws = New-Object -ComObject WScript.Shell
+$sc = $ws.CreateShortcut("$env:USERPROFILE\Desktop\Torproxy.lnk")
+$sc.TargetPath = "C:\caminho\completo\ate\Torproxy-win\torify.exe"
+$sc.WorkingDirectory = "C:\caminho\completo\ate\Torproxy-win"
+$sc.Save()
+```
 
 ---
 
-## Uso
+## Como usar
 
-Execute `torify.exe`. Menu:
+Execute `torify.exe`. O menu:
 
 ```
+  ========================
+    TorProxy-Win v1.0
+  ========================
+  Tor + Proxychains for Windows
+  ========================
+
   [1] Rodar TorProxy
   [2] Conferir IP
   [3] Configurar
+  [4] Adicionar App
+  [5] Abrir App com Tor
   [0] Sair
+
+  ========================
 ```
 
-### Opcao 1
-1. Inicia Tor (se necessario)
-2. Rotaciona IP via SIGNAL NEWNYM
+### Primeiro uso: adicionar um aplicativo
+
+**1. Menu > opcao 4 — Adicionar App**
+
+Uma janela do Windows vai abrir para voce selecionar um arquivo `.exe`. Escolha o programa que voce quer rotear pelo Tor (navegador, cliente de chat, qualquer coisa).
+
+Assim que selecionar, o programa:
+- Salva o app numa lista (arquivo `apps.txt` na pasta do Torproxy)
+- Inicia o Tor (se ainda nao tiver rodando)
+- Abre o app via proxychains — o trafego dele vai passar pelo Tor
+
+O terminal do menu continua aberto. Voce pode adicionar quantos apps quiser.
+
+### Abrir um app salvo
+
+**2. Menu > opcao 5 — Abrir App com Tor**
+
+O menu mostra todos os apps que voce ja adicionou:
+
+```
+  Apps salvos:
+
+  [1] Firefox
+      C:\Program Files\Mozilla Firefox\firefox.exe
+  [2] Discord
+      C:\Users\voce\AppData\Local\Discord\Discord.exe
+  [3] opencode
+      C:\Users\voce\AppData\Roaming\npm\node_modules\opencode-ai\bin\opencode.exe
+
+  [0] Voltar
+
+  Escolha:
+```
+
+Digite o numero do app. O Torproxy:
+1. Rotaciona o IP (SIGNAL NEWNYM)
+2. Abre o app em janela separada com o trafego passando pelo Tor
+
+### Verificar se o proxy esta funcionando
+
+**3. Menu > opcao 2 — Conferir IP**
+
+Mostra seu IP real (sem proxy) e o IP do Tor lado a lado. Se forem diferentes, esta roteando corretamente.
+
+```
+  IP real: 201.95.xx.xx
+  IP Tor:  185.220.xxx.xxx
+
+  [+] IPs DIFERENTES — Tor funcionando!
+```
+
+### Tudo de uma vez
+
+**4. Menu > opcao 1 — Rodar TorProxy**
+
+Faz tudo automatizado:
+1. Inicia Tor
+2. Rotaciona IP
 3. Mostra IP real vs IP do Tor
-4. Abre o aplicativo configurado em nova janela
-
-### Opcao 2
-Verifica se o proxy esta funcionando comparando IP real vs IP do Tor.
-
-### Opcao 3
-Define qual aplicativo sera roteado pelo Tor.  
-Digite o caminho completo do .exe ou `auto` para detectar automaticamente.
+4. Abre o aplicativo configurado (da opcao 3)
 
 ---
 
-## Estrutura
+## Estrutura de arquivos
 
 ```
 Torproxy-win/
-├── src/torify.cs          # codigo fonte (C#)
-├── setup.ps1              # instalacao completa
-├── build.ps1              # compila o exe
+├── src/torify.cs            # codigo fonte (C#)
+├── setup.ps1                # instalacao completa
+├── build.ps1                # compila o exe manualmente
 ├── .gitignore
 ├── README.md
-├── torify.exe             # compilado (gitignored)
-├── tor/                   # Tor Expert Bundle (gitignored)
-└── proxychains/           # proxychains-windows (gitignored)
+│
+├── torify.exe               # menu compilado (gerado pelo setup)
+├── apps.txt                 # lista de apps que voce adicionou
+├── target-app.txt           # caminho do app padrao (opcao 3)
+│
+├── tor/                     # Tor Expert Bundle (baixado pelo setup)
+│   ├── tor.exe
+│   └── Data/Tor/torrc
+│
+└── proxychains/             # proxychains-windows (baixado pelo setup)
+    ├── proxychains_win32_x64.exe
+    └── proxychains.conf
 ```
 
-Paths sao detectados automaticamente — funciona em qualquer maquina sem configuracao.
+Tudo portatil. Nada registra no sistema. Copie a pasta inteira para outro PC que funciona — so rodar `setup.ps1` de novo para baixar as dependencias.
 
 ---
 
-## Compilar manualmente
+## Recompilar manualmente
+
+Se quiser modificar o codigo e recompilar:
 
 ```powershell
 .\build.ps1
@@ -87,13 +160,15 @@ Paths sao detectados automaticamente — funciona em qualquer maquina sem config
 Ou direto com o compilador C#:
 
 ```powershell
-& "$env:windir\Microsoft.NET\Framework\v4.0.30319\csc.exe" /target:exe /reference:System.Windows.Forms.dll /out:torify.exe src\torify.cs
+& "$env:windir\Microsoft.NET\Framework\v4.0.30319\csc.exe" `
+    /target:exe `
+    /reference:System.Windows.Forms.dll `
+    /out:torify.exe `
+    src\torify.cs
 ```
 
 ---
 
-## Notas
+## Sobre
 
-- O proxy funciona com qualquer aplicacao que use conexoes de rede padrao (Winsock)
-- Por padrao o menu tenta detectar o opencode, mas voce pode configurar qualquer .exe
-- Para usar com outros aplicativos, configure o caminho na opcao 3 do menu
+Ferramenta gratuita e open-source. Usa o [Tor Expert Bundle](https://www.torproject.org/) da comunidade Tor Project e o [proxychains-windows](https://github.com/shunf4/proxychains-windows) mantido por shunf4.
