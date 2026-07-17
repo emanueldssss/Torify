@@ -16,43 +16,54 @@ Write-Host "`n"
 
 # ─── 1. Download Tor Expert Bundle ───────────────────────────────────
 $TorDir    = "$Base\tor"
-$TorZip    = "$Base\tor-win64.zip"
-$TorUrl    = "https://www.torproject.org/dist/torbrowser/14.0.6/tor-win64-14.0.6.zip"
-# Mirror fallback if primary fails
-$TorUrlMir = "https://archive.torproject.org/tor-package-archive/torbrowser/14.0.6/tor-win64-14.0.6.zip"
+$TorTarball = "$Base\tor-expert.tar.gz"
+$TorVer    = "15.0.18"
+$TorUrl    = "https://www.torproject.org/dist/torbrowser/$TorVer/tor-expert-bundle-windows-x86_64-$TorVer.tar.gz"
+$TorUrlMir = "https://archive.torproject.org/tor-package-archive/torbrowser/$TorVer/tor-expert-bundle-windows-x86_64-$TorVer.tar.gz"
 
 if (!(Test-Path "$TorDir\tor.exe")) {
-    Write-Host "  [*] Baixando Tor Expert Bundle...`n" -ForegroundColor Cyan
+    Write-Host "  [*] Baixando Tor Expert Bundle $TorVer...`n" -ForegroundColor Cyan
 
-    try {
-        Invoke-WebRequest -Uri $TorUrl -OutFile $TorZip -UseBasicParsing -TimeoutSec 120
-    } catch {
-        Write-Host "  [!] Primary URL failed, trying mirror..." -ForegroundColor Yellow
+    $downloaded = $false
+    foreach ($url in @($TorUrl, $TorUrlMir)) {
         try {
-            Invoke-WebRequest -Uri $TorUrlMir -OutFile $TorZip -UseBasicParsing -TimeoutSec 120
+            Write-Host "      $url" -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $url -OutFile $TorTarball -UseBasicParsing -TimeoutSec 120
+            $downloaded = $true
+            break
         } catch {
-            Write-Host "  [!] Erro ao baixar Tor. Baixe manualmente de:" -ForegroundColor Red
-            Write-Host "      $TorUrl" -ForegroundColor Red
-            Write-Host "  [!] Extraia o conteudo para: $TorDir" -ForegroundColor Red
-            exit 1
+            Write-Host "      [!] falhou, tentando mirror..." -ForegroundColor Yellow
         }
+    }
+
+    if (-not $downloaded) {
+        Write-Host "`n  [!] Erro ao baixar Tor. Baixe manualmente:" -ForegroundColor Red
+        Write-Host "      $TorUrl" -ForegroundColor Red
+        Write-Host "      Extraia o conteudo para: $TorDir`n" -ForegroundColor Red
+        Write-Host "      Apos baixar, extraia com:" -ForegroundColor Yellow
+        Write-Host "      tar -xzf tor-expert-bundle-windows-x86_64-$TorVer.tar.gz -C `"$Base`"" -ForegroundColor Yellow
+        exit 1
     }
 
     Write-Host "  [*] Extraindo Tor..." -ForegroundColor Cyan
-    Expand-Archive -Path $TorZip -DestinationPath $Base -Force
-    # The zip extracts to a subfolder like "tor" — ensure structure
-    if (Test-Path "$Base\tor") {
-        Write-Host "  [+] Tor extraido em $TorDir" -ForegroundColor Green
-    } else {
-        # Find the extracted folder
-        $extracted = Get-ChildItem "$Base\tor-win64-*" -Directory | Select-Object -First 1
+    # Use tar.exe (built-in on Win10/11)
+    tar -xzf $TorTarball -C "$Base"
+    if ($LASTEXITCODE -eq 0) {
+        # The tarball extracts to tor-expert-bundle-windows-x86_64-15.0.18/
+        $extracted = Get-ChildItem "$Base\tor-expert-bundle-windows-*" -Directory | Select-Object -First 1
         if ($extracted) {
+            # Rename to just "tor"
+            if (Test-Path $TorDir) { Remove-Item $TorDir -Recurse -Force }
             Move-Item $extracted.FullName $TorDir -Force
+            Write-Host "  [+] Tor extraido em $TorDir" -ForegroundColor Green
         } else {
-            Write-Host "  [!] Extraido mas nao encontrei a pasta. Verifique manualmente." -ForegroundColor Red
+            Write-Host "  [!] Extraido mas pasta nao encontrada. Verifique manualmente." -ForegroundColor Red
         }
+    } else {
+        Write-Host "  [!] Erro na extracao. Tente manualmente." -ForegroundColor Red
+        exit 1
     }
-    Remove-Item $TorZip -Force -ErrorAction SilentlyContinue
+    Remove-Item $TorTarball -Force -ErrorAction SilentlyContinue
 } else {
     Write-Host "  [+] Tor ja baixado." -ForegroundColor Green
 }
@@ -77,17 +88,29 @@ Write-Host "  [+] torrc criado." -ForegroundColor Green
 # ─── 3. Download Proxychains-Windows ─────────────────────────────────
 $PcDir    = "$Base\proxychains"
 $PcZip    = "$Base\proxychains.zip"
-$PcUrl    = "https://github.com/Mr-xn/proxychains-windows/releases/download/0.6.8/proxychains_win32_x64.zip"
+$PcVer    = "0.6.8"
+$PcUrl    = "https://github.com/shunf4/proxychains-windows/releases/download/$PcVer/proxychains_${PcVer}_win32_x64.zip"
+$PcUrlMir = "https://github.com/shunf4/proxychains-windows/releases/download/$PcVer/proxychains_${PcVer}_win32_x64_debug.zip"
 
 if (!(Test-Path "$PcDir\proxychains_win32_x64.exe")) {
-    Write-Host "`n  [*] Baixando Proxychains-Windows..." -ForegroundColor Cyan
+    Write-Host "`n  [*] Baixando Proxychains-Windows $PcVer..." -ForegroundColor Cyan
 
-    try {
-        Invoke-WebRequest -Uri $PcUrl -OutFile $PcZip -UseBasicParsing -TimeoutSec 60
-    } catch {
-        Write-Host "  [!] Erro ao baixar proxychains. Baixe manualmente:" -ForegroundColor Red
-        Write-Host "      $PcUrl" -ForegroundColor Red
-        Write-Host "      Extraia para: $PcDir" -ForegroundColor Red
+    $downloaded = $false
+    foreach ($url in @($PcUrl, $PcUrlMir)) {
+        try {
+            Write-Host "      $url" -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $url -OutFile $PcZip -UseBasicParsing -TimeoutSec 60
+            $downloaded = $true
+            break
+        } catch {
+            Write-Host "      [!] falhou, tentando mirror..." -ForegroundColor Yellow
+        }
+    }
+
+    if (-not $downloaded) {
+        Write-Host "`n  [!] Erro ao baixar proxychains. Baixe manualmente:" -ForegroundColor Red
+        Write-Host "      https://github.com/shunf4/proxychains-windows/releases" -ForegroundColor Red
+        Write-Host "      Extraia para: $PcDir`n" -ForegroundColor Red
         exit 1
     }
 
