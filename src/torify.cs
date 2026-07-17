@@ -69,10 +69,10 @@ namespace Torify
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Magenta;
             Console.WriteLine("\n  ========================");
-            Console.WriteLine("    Primeira execucao");
+            Console.WriteLine("    Primeira Execução");
             Console.WriteLine("  ========================");
             Console.ResetColor();
-            Console.WriteLine("\n  Baixando dependencias (Tor + Proxychains)...\n");
+            Console.WriteLine("\n  Baixando dependências (Tor + Proxychains)...\n");
 
             string setupDone = Path.Combine(BaseDir, ".setup-complete");
             if (File.Exists(setupDone)) return;
@@ -181,7 +181,7 @@ namespace Torify
             }
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("\n  [+] Setup concluido! Iniciando menu...\n");
+            Console.WriteLine("\n  [+] Setup concluído! Iniciando menu...\n");
             Console.ResetColor();
             System.Threading.Thread.Sleep(1500);
         }
@@ -882,6 +882,9 @@ namespace Torify
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
                 Console.InputEncoding = System.Text.Encoding.UTF8;
 
+                // Force TLS 1.2 for GitHub/Tor downloads
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
                 InitPaths();
                 CheckDependencies();
                 SetAlpha(210);
@@ -917,8 +920,7 @@ namespace Torify
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\n  [!] Erro ao iniciar: " + ex.Message);
-                Console.WriteLine("      Verifique se a pasta tor/ e proxychains/ existem.");
+                Console.WriteLine("\n  [!] Erro: " + ex.Message);
                 Console.ResetColor();
                 Console.WriteLine("\n  Pressione qualquer tecla para sair...");
                 Console.ReadKey();
