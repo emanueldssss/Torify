@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Setup script for Torify — Tor + Proxychains wrapper for opencode.
+  Setup script for Torify — Tor + Proxychains wrapper for Windows.
 .DESCRIPTION
   Downloads Tor Expert Bundle + Proxychains-Windows, creates configs,
   and compiles the torify.exe menu launcher.
@@ -8,12 +8,12 @@
 
 $ErrorActionPreference = "Stop"
 $Base = "$env:LOCALAPPDATA\Torify"
+$ScriptDir = $PSScriptRoot
 
-# Garante que a pasta existe
 if (!(Test-Path $Base)) { New-Item -ItemType Directory -Path $Base -Force | Out-Null }
 
 Write-Host "`n  ========================" -ForegroundColor Magenta
-Write-Host "     TORIFY v1.1 - Setup" -ForegroundColor Magenta
+Write-Host "     TORIFY v1.2 - Setup" -ForegroundColor Magenta
 Write-Host "  ========================" -ForegroundColor Magenta
 Write-Host "`n"
 
@@ -49,13 +49,10 @@ if (!(Test-Path "$TorDir\tor.exe")) {
     }
 
     Write-Host "  [*] Extraindo Tor..." -ForegroundColor Cyan
-    # Use tar.exe (built-in on Win10/11)
     tar -xzf $TorTarball -C "$Base"
     if ($LASTEXITCODE -eq 0) {
-        # The tarball extracts to tor-expert-bundle-windows-x86_64-15.0.18/
         $extracted = Get-ChildItem "$Base\tor-expert-bundle-windows-*" -Directory | Select-Object -First 1
         if ($extracted) {
-            # Rename to just "tor"
             if (Test-Path $TorDir) { Remove-Item $TorDir -Recurse -Force }
             Move-Item $extracted.FullName $TorDir -Force
             Write-Host "  [+] Tor extraido em $TorDir" -ForegroundColor Green
@@ -71,7 +68,7 @@ if (!(Test-Path "$TorDir\tor.exe")) {
     Write-Host "  [+] Tor ja baixado." -ForegroundColor Green
 }
 
-# ─── 2. Create torrc ─────────────────────────────────────────────────
+# ─── 2. Create torrc (no GeoIP — bundle nao inclui esses arquivos) ──
 $TorData = "$TorDir\Data\Tor"
 if (!(Test-Path $TorData)) { New-Item -ItemType Directory -Path $TorData -Force | Out-Null }
 
@@ -80,8 +77,6 @@ SOCKSPort 127.0.0.1:9050
 ControlPort 127.0.0.1:9051
 CookieAuthentication 0
 DataDirectory $TorData
-GeoIPFile $TorDir\Data\Tor\geoip
-GeoIPv6File $TorDir\Data\Tor\geoip6
 Log notice stdout
 "@
 
@@ -125,9 +120,9 @@ if (!(Test-Path "$PcDir\proxychains_win32_x64.exe")) {
     Write-Host "  [+] Proxychains ja baixado." -ForegroundColor Green
 }
 
-# ─── 4. Create proxychains.conf ──────────────────────────────────────
+# ─── 4. Create proxychains.conf (dynamic_chain para resiliencia) ─────
 $pcConf = @"
-strict_chain
+dynamic_chain
 proxy_dns
 tcp_read_time_out 15000
 tcp_connect_time_out 8000
@@ -136,14 +131,21 @@ socks5 127.0.0.1 9050
 "@
 
 $pcConf | Out-File -FilePath "$PcDir\proxychains.conf" -Encoding ASCII -Force
-Write-Host "  [+] proxychains.conf criado." -ForegroundColor Green
+Write-Host "  [+] proxychains.conf criado (dynamic_chain)." -ForegroundColor Green
 
 # ─── 5. Compile torify.exe ───────────────────────────────────────────
 Write-Host "`n  [*] Compilando torify.exe..." -ForegroundColor Cyan
 
+# Fonte esta no diretorio do script, nao no $Base!
+$sourceFile = "$ScriptDir\src\torify.cs"
+if (!(Test-Path $sourceFile)) {
+    Write-Host "  [!] Fonte nao encontrado em: $sourceFile" -ForegroundColor Red
+    Write-Host "  [!] Certifique-se de estar no diretorio do repositorio." -ForegroundColor Red
+    exit 1
+}
+
 $csc = "${env:windir}\Microsoft.NET\Framework\v4.0.30319\csc.exe"
 if (!(Test-Path $csc)) {
-    # Try other versions
     $csc = Get-ChildItem "${env:windir}\Microsoft.NET\Framework" -Recurse -Filter "csc.exe" | Select-Object -First 1 -ExpandProperty FullName
 }
 if (!($csc) -or !(Test-Path $csc)) {
@@ -153,7 +155,11 @@ if (!($csc) -or !(Test-Path $csc)) {
     exit 1
 }
 
-& $csc /target:exe /reference:System.Windows.Forms.dll /out:"$Base\torify.exe" "$Base\src\torify.cs" 2>&1 | Out-Null
+# Check if icon exists before using it
+$iconFile = "$ScriptDir\torify.ico"
+$iconArg = if (Test-Path $iconFile) { "/win32icon:`"$iconFile`"" } else { "" }
+
+& $csc /target:exe /reference:System.Windows.Forms.dll $iconArg "/out:$Base\torify.exe" $sourceFile 2>&1 | Out-Null
 if (Test-Path "$Base\torify.exe") {
     Write-Host "  [+] torify.exe compilado! ($((Get-Item "$Base\torify.exe").Length / 1KB) KB)" -ForegroundColor Green
 } else {
@@ -162,7 +168,6 @@ if (Test-Path "$Base\torify.exe") {
 }
 
 # ─── 6. Cleanup ──────────────────────────────────────────────────────
-# Remove old scripts folder if it exists (legacy)
 if (Test-Path "$Base\scripts") {
     Remove-Item "$Base\scripts" -Recurse -Force -ErrorAction SilentlyContinue
 }
