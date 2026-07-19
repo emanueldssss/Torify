@@ -36,6 +36,7 @@ namespace Torify
         static string PcConf;
         static string AppsFile;
         static DateTime _lastNewnym = DateTime.MinValue;
+        static bool _autoRotateRunning = false;
 
         static void SetAlpha(byte alpha)
         {
@@ -364,9 +365,56 @@ namespace Torify
 
         static string GetTorIP()
         {
-            if (PcExe == null || !File.Exists(PcExe))
-                return "proxychains nÃ£o encontrado";
-            return FetchIP("& \"" + PcExe + "\" -q -f \"" + PcConf + "\" powershell -NoProfile -Command \"try{Write-Host ((Invoke-WebRequest -Uri 'https://api.ipify.org' -UseBasicParsing -TimeoutSec 5).Content)}catch{Write-Host 'falhou'}\"");
+            // Usa curl.exe nativo do Windows com suporte direto a SOCKS5
+            // Bypassa WinHTTP/PowerShell, funciona com qualquer CLI
+            try
+            {
+                Process p = new Process();
+                p.StartInfo.FileName = "curl.exe";
+                p.StartInfo.Arguments = "-s --socks5 127.0.0.1:9050 --max-time 10 https://api.ipify.org";
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.RedirectStandardOutput = true;
+                p.StartInfo.CreateNoWindow = true;
+                p.Start();
+                string result = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit(15000);
+                if (!string.IsNullOrEmpty(result) && result != "falhou")
+                    return result;
+            }
+            catch { }
+
+            // Fallback: tenta via fetch ip ify
+            try
+            {
+                using (var wc = new WebClient())
+                {
+                    string result = wc.DownloadString("https://api.ipify.org");
+                    if (!string.IsNullOrEmpty(result))
+                        return result + " (sem proxy)";
+                }
+            }
+            catch { }
+
+            return "falhou";
+        }
+
+        static string CheckTorIP()
+        {
+            try
+            {
+                Process p = new Process();
+                p.StartInfo.FileName = "curl.exe";
+                p.StartInfo.Arguments = "-s --socks5 127.0.0.1:9050 --max-time 10 https://api.ipify.org";
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.RedirectStandardOutput = true;
+                p.StartInfo.CreateNoWindow = true;
+                p.Start();
+                string result = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit(15000);
+                if (!string.IsNullOrEmpty(result)) return result;
+            }
+            catch { }
+            return null;
         }
 
         static void SendNEWNYM()
@@ -434,6 +482,10 @@ namespace Torify
             Console.WriteLine("  [6] Parar Tor");
             Console.ResetColor();
             Console.WriteLine("      Encerra o processo do Tor\n");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  [7] Auto-Rotate (torsocks mode)");
+            Console.ResetColor();
+            Console.WriteLine("      Abre app + rotaciona IP automaticamente\n");
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("  [0] Sair\n");
             Console.ResetColor();
@@ -520,7 +572,7 @@ namespace Torify
                 oc.StartInfo.CreateNoWindow = false;
                 oc.Start();
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("  [+] Aplicativo aberto! Menu continua aqui.\n");
+                Console.WriteLine("  [+] Aplicativo aberto via proxy! Menu continua aqui.\n");
                 Console.ResetColor();
             }
             catch (Exception ex)
@@ -549,13 +601,13 @@ namespace Torify
             Console.ResetColor();
             Console.WriteLine();
             string realIP = GetRealIP();
-            string torIP  = GetTorIP();
+            string torIP  = CheckTorIP();
             Console.Write("  IP real: ");
             Console.ForegroundColor = ConsoleColor.Gray;
             Console.WriteLine(realIP);
             Console.ResetColor();
             Console.Write("  IP Tor:  ");
-            if (torIP != "falhou" && !string.IsNullOrEmpty(torIP) && !torIP.Contains("nÃ£o encontrado"))
+            if (!string.IsNullOrEmpty(torIP))
             {
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine(torIP);
@@ -576,7 +628,9 @@ namespace Torify
             else
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(torIP);
+                Console.WriteLine("falhou");
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("  [*] curl.exe pode nÃ£o estar disponÃ­vel no sistema.");
                 Console.ResetColor();
             }
             WaitAndBack();
@@ -589,13 +643,13 @@ namespace Torify
             Console.WriteLine("\n  [*] Verificando IP...\n");
             Console.ResetColor();
             string realIP = GetRealIP();
-            string torIP  = GetTorIP();
+            string torIP  = CheckTorIP();
             Console.Write("  IP real: ");
             Console.ForegroundColor = ConsoleColor.Gray;
             Console.WriteLine(realIP);
             Console.ResetColor();
             Console.Write("  IP Tor:  ");
-            if (torIP != "falhou" && !string.IsNullOrEmpty(torIP) && !torIP.Contains("nÃ£o encontrado"))
+            if (!string.IsNullOrEmpty(torIP))
             {
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine(torIP);
@@ -616,9 +670,9 @@ namespace Torify
             else
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("  " + torIP);
+                Console.WriteLine("  falhou");
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("  [!] Tor pode nÃ£o estar rodando. Use a opÃ§Ã£o 1 primeiro.");
+                Console.WriteLine("  [*] Tor pode nÃ£o estar rodando. Use a opÃ§Ã£o 1 primeiro.");
                 Console.ResetColor();
             }
             WaitAndBack();
@@ -774,7 +828,7 @@ namespace Torify
                     proc.StartInfo.CreateNoWindow = false;
                     proc.Start();
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("  [+] App aberto! Adicionado a lista.\n");
+                    Console.WriteLine("  [+] App aberto via proxy! Adicionado Ã  lista.\n");
                     Console.ResetColor();
                 }
                 catch (Exception ex)
@@ -856,7 +910,7 @@ namespace Torify
                     proc.StartInfo.CreateNoWindow = false;
                     proc.Start();
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("  [+] App aberto! Menu continua aqui.\n");
+                    Console.WriteLine("  [+] App aberto via proxy! Menu continua aqui.\n");
                     Console.ResetColor();
                 }
                 catch (Exception ex)
@@ -886,6 +940,168 @@ namespace Torify
             KillTor();
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("  [+] Tor parado com sucesso.");
+            Console.ResetColor();
+            WaitAndBack();
+        }
+
+        static void OptionAutoRotate()
+        {
+            Console.Clear();
+            Logo();
+
+            // Check deps
+            string appPath = FindTargetApp();
+            if (appPath == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] Nenhum aplicativo configurado!");
+                Console.WriteLine("  [!] Use a opÃ§Ã£o 3 primeiro para definir o .exe");
+                Console.ResetColor();
+                WaitAndBack();
+                return;
+            }
+            if (!File.Exists(PcExe))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] proxychains nÃ£o encontrado.");
+                Console.ResetColor();
+                WaitAndBack();
+                return;
+            }
+
+            // Pergunta o intervalo
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  [*] Modo Auto-Rotate (torsocks style)\n");
+            Console.ResetColor();
+            Console.WriteLine("  A cada quantos segundos deseja rotacionar o IP?");
+            Console.WriteLine("  (recomendado: 30 a 300 segundos)");
+            Console.Write("\n  Intervalo (s) [60]: ");
+            string intervalInput = Console.ReadLine().Trim();
+            int intervalSec = 60;
+            if (!string.IsNullOrEmpty(intervalInput))
+                int.TryParse(intervalInput, out intervalSec);
+            if (intervalSec < 15) intervalSec = 15;
+
+            Console.WriteLine("\n  O app serÃ¡ aberto via Tor e o IP serÃ¡ rotacionado");
+            Console.WriteLine("  a cada {0} segundos automaticamente.", intervalSec);
+            Console.WriteLine("  Pressione 'Q' a qualquer momento para parar.\n");
+            Console.WriteLine("  ========================\n");
+
+            // Inicia Tor se necessÃ¡rio
+            StartTor();
+            if (!IsTorRunning())
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] NÃ£o foi possÃ­vel iniciar o Tor.");
+                Console.ResetColor();
+                WaitAndBack();
+                return;
+            }
+
+            // Abre o app via proxychains
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("  [*] Abrindo aplicativo via Tor...");
+            Console.ResetColor();
+            Process appProcess = null;
+            try
+            {
+                appProcess = new Process();
+                appProcess.StartInfo.FileName = PcExe;
+                appProcess.StartInfo.Arguments = "-q -f \"" + PcConf + "\" \"" + appPath + "\"";
+                appProcess.StartInfo.UseShellExecute = true;
+                appProcess.StartInfo.CreateNoWindow = false;
+                appProcess.Start();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("  [+] App aberto!\n");
+                Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("  [!] Erro ao abrir app: " + ex.Message);
+                Console.ResetColor();
+                WaitAndBack();
+                return;
+            }
+
+            _autoRotateRunning = true;
+            int cycle = 0;
+            string lastIP = "";
+
+            while (_autoRotateRunning)
+            {
+                // Check if user pressed Q
+                if (Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(true);
+                    if (key.Key == ConsoleKey.Q)
+                    {
+                        _autoRotateRunning = false;
+                        break;
+                    }
+                }
+
+                cycle++;
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  [{0}] Rotacionando IP... ", cycle);
+                Console.ResetColor();
+
+                // Rate limit check + NEWNYM
+                SendNEWNYM();
+                Thread.Sleep(3000);
+
+                // Verifica novo IP
+                string newIP = CheckTorIP();
+                if (!string.IsNullOrEmpty(newIP))
+                {
+                    if (newIP == lastIP && lastIP != "")
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("IP nÃ£o mudou ({0}), aguardando mais...", newIP);
+                        Console.ResetColor();
+                        Thread.Sleep(5000);
+                        SendNEWNYM();
+                        Thread.Sleep(3000);
+                        newIP = CheckTorIP();
+                    }
+
+                    if (!string.IsNullOrEmpty(newIP))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("{0}", newIP);
+                        Console.ResetColor();
+                        lastIP = newIP;
+                    }
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("falhou (curl nÃ£o disponÃ­vel?)");
+                    Console.ResetColor();
+                }
+
+                // Aguarda o intervalo (com check de tecla)
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write("      PrÃ³xima rotaÃ§Ã£o em {0}s...  ", intervalSec);
+                Console.ResetColor();
+                for (int i = 0; i < intervalSec; i++)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(true);
+                        if (key.Key == ConsoleKey.Q)
+                        {
+                            _autoRotateRunning = false;
+                            break;
+                        }
+                    }
+                    Thread.Sleep(1000);
+                }
+                Console.WriteLine();
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("\n  [+] Auto-Rotate finalizado.");
             Console.ResetColor();
             WaitAndBack();
         }
@@ -932,6 +1148,7 @@ namespace Torify
                         case "4": OptionAddApp(); break;
                         case "5": OptionOpenApp(); break;
                         case "6": OptionKillTor(); break;
+                        case "7": OptionAutoRotate(); break;
                         case "0":
                             if (IsTorRunning())
                             {
