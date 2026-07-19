@@ -47,7 +47,7 @@ Execute `torify.exe`. O menu:
 
 ```
   ========================
-    Torify v1.1
+    Torify v1.2
   ========================
   Tor + Proxychains for Windows
   ========================
@@ -57,6 +57,7 @@ Execute `torify.exe`. O menu:
   [3] Configurar
   [4] Adicionar App
   [5] Abrir App com Tor
+  [6] Parar Tor
   [0] Sair
 
   ========================
