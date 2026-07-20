@@ -205,6 +205,13 @@ $("#themeBtn").addEventListener("click", ()=>{
 $("#startBtn").addEventListener("click", startTor);
 $("#checkBtn").addEventListener("click", ()=>checkIp(false));
 $("#checkBtn2") && $("#checkBtn2").addEventListener("click", ()=>checkIp(false));
+$("#newIdBtn") && $("#newIdBtn").addEventListener("click", async ()=>{
+  const b = $("#newIdBtn"); b.disabled = true; b.textContent = "↻ renovando…";
+  toast("renovando identidade tor…");
+  await api("/newid", {method:"POST"});
+  b.disabled = false; b.textContent = "↻ new identity";
+  await checkIp(false);
+});
 
 /* ---------- sair : mata tudo (tor + servidor + pagina) ---------- */
 async function doExit(){

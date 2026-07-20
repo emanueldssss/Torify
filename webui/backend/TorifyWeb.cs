@@ -80,6 +80,7 @@ class Server
             Environment.Exit(1);
         }
         Z_Log("torify v1.5 by emanueldssss — ouvindo em http://localhost:8899/");
+        Application.ApplicationExit += (s, e) => { try { Q_StopTor(); } catch { } };
         new Thread(Loop).Start();
         AbrirBrowser();
         Application.Run();
@@ -237,7 +238,7 @@ class Server
         for (int i = 0; i < 30; i++)
         {
             Thread.Sleep(1000);
-            if (Q_SocksUp()) { torOk = true; return "ok"; }
+            if (Q_SocksUp()) { torOk = true; Q_NewCirc(); return "ok"; }
         }
         // falhou: mata para nao deixar zumbi
         try { if (torProc != null && !torProc.HasExited) torProc.Kill(); } catch { }
@@ -263,8 +264,13 @@ class Server
     static string Q_TorIp()
     {
         // .NET nao suporta socks5 nativamente — fazemos o tunel manualmente
-        string r = SocksHttpsGet("127.0.0.1", socksPort, "api.ipify.org", 443, "/");
-        return r ?? "offline";
+        for (int i = 0; i < 3; i++)
+        {
+            string r = SocksHttpsGet("127.0.0.1", socksPort, "api.ipify.org", 443, "/");
+            if (!string.IsNullOrEmpty(r) && r != "offline") return r;
+            Thread.Sleep(1500);
+        }
+        return "offline";
     }
     static string SocksHttpsGet(string proxyHost, int proxyPort, string host, int hostPort, string path)
     {
@@ -329,15 +335,20 @@ class Server
     {
         try
         {
-            var req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:9051/");
-            req.Method = "POST";
-            string body = "AUTHENTICATE \"\"\r\nSIGNAL NEWNYM\r\nQUIT\r\n";
-            byte[] d = Encoding.ASCII.GetBytes(body);
-            req.ContentLength = d.Length;
-            using (var s = req.GetRequestStream()) s.Write(d, 0, d.Length);
-            using (var resp = req.GetResponse()) { }
+            using (var c = new TcpClient("127.0.0.1", 9051))
+            using (var ns = c.GetStream())
+            using (var w = new StreamWriter(ns) { AutoFlush = true })
+            using (var r = new StreamReader(ns))
+            {
+                w.Write("AUTHENTICATE \"\"\r\n");
+                var a = r.ReadLine(); // 250 OK
+                w.Write("SIGNAL NEWNYM\r\n");
+                var s = r.ReadLine(); // 250 OK ou 250 closed circuits
+                w.Write("QUIT\r\n");
+                Z_Log("NEWNYM: auth=" + a + " sig=" + s);
+            }
         }
-        catch { }
+        catch (Exception ex) { Z_Log("NEWNYM err: " + ex.Message); }
     }
     static List<string> Q_Apps()
     {
@@ -441,6 +452,14 @@ class Server
         }
         if (path == "/rotate" && method == "POST") { Q_RotateOn(); Z_Json(ctx, "{\"ok\":true}"); return; }
         if (path == "/rotate" && method == "DELETE") { Q_RotateOff(); Z_Json(ctx, "{\"ok\":true}"); return; }
+        if (path == "/newid" && method == "POST")
+        {
+            Z_Log("newid: antes " + Q_TorIp());
+            Q_NewCirc();
+            Thread.Sleep(18000);
+            Z_Log("newid: depois " + Q_TorIp());
+            Z_Json(ctx, "{\"ok\":true}"); return;
+        }
         if (path == "/rotate/status")
         {
             Z_Json(ctx, "{\"ok\":true,\"on\":" + (rotating ? "true" : "false") + ",\"interval\":" + rotInterval + "}"); return;
